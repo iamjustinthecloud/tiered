@@ -2,12 +2,14 @@ import aws_cdk.aws_ec2 as ec2
 from cdk_nag import NagSuppressions
 from aws_cdk import Stack, CfnTag
 from constructs import Construct
-
+from networking.security_groups import endpoint_security_group
 
 
 class NetworkingStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+
 
         self.vpc = ec2.Vpc(self, "VPC",
                            vpc_name="NetworkingVpc",
@@ -36,6 +38,7 @@ class NetworkingStack(Stack):
 
 
         )
+        self.endpoint_sg = endpoint_security_group(self, self.vpc)
         self.cfn_internet_gateway = ec2.CfnInternetGateway(
             self, "InternetGateway",
             tags=[
@@ -66,11 +69,7 @@ class NetworkingStack(Stack):
                     "id":"AwsSolutions-VPC7",
                     "reason": "Flow Logs are intentionally deferred in this personal POC during "
                               "M3 to avoid added logging cost before the runtime validation gate."
-                },
-                {
-                    "id": "SomeOtherRuleId",
-                    "reason": "Document the exact reason this exception is acceptable for this POC.",
-                },
+                }
             ],
             apply_to_children=True,
             )

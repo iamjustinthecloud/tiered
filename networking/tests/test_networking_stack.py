@@ -99,3 +99,21 @@ class TestNetworkingStack(unittest.TestCase):
         ]
     )
 
+    def test_interface_endpoints_security_groups(self)->None:
+
+        security_groups = self.template.find_resources("AWS::EC2::SecurityGroup")
+        security_group = next(iter(security_groups.values()))
+        ingress_rules = security_group["Properties"]["SecurityGroupIngress"]
+        sg_ingress_rules = [
+            ingress_rule["CidrIp"]
+            for resource in security_groups.values()
+            for ingress_rule in resource["Properties"].get("SecurityGroupIngress", [])
+                          ]
+        self.assertEqual(sorted(sg_ingress_rules), sorted(['10.0.48.0/20','10.0.32.0/20']))
+        self.assertTrue(len(sg_ingress_rules) == 2)
+        self.assertNotIn("0.0.0.0/0",sg_ingress_rules)
+        self.assertEqual(len(security_groups), 1)
+        for rule in ingress_rules:
+            self.assertEqual(rule["IpProtocol"], "tcp")
+            self.assertEqual(rule["FromPort"], 443)
+            self.assertEqual(rule["ToPort"], 443)
