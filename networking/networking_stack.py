@@ -61,7 +61,17 @@ class NetworkingStack(Stack):
             )
             public_default_route.add_dependency(self.cfn_vpc_attachment)
 
+        self.vpc.add_interface_endpoint(
+            "ECRInterfaceEndpoint",
+            open=False,
+            service=ec2.InterfaceVpcEndpointAwsService.ECR,
+            subnets=ec2.SubnetSelection(
+                subnet_group_name="private_app",
+            ),
+            security_groups=[self.endpoint_sg],
 
+
+                                        )
         NagSuppressions.add_resource_suppressions(
             construct=self.vpc,
             suppressions=[

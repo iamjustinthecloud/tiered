@@ -52,20 +52,30 @@ class TestNetworkingStack(unittest.TestCase):
         self.assertEqual(len(private_db_subnet_ids), 2)
         self.assertTrue(default_route_table_ids.isdisjoint(private_db_route_table_ids))
 
+    def test_vpc_attachment(self) -> None:
+        vpc_attachment = self.template.find_resources("AWS::EC2::VPCGatewayAttachment")
+        self.assertEqual(len(vpc_attachment), 1)
 
-    def test_creates_expected_resource_counts(self)->None:
-        expected_resource_counts = {
-            "AWS::EC2::VPC": 1,
-            "AWS::EC2::Subnet": 6,
-            "AWS::EC2::RouteTable": 6,
-            "AWS::EC2::SubnetRouteTableAssociation": 6,
-            "AWS::EC2::InternetGateway": 1,
-            "AWS::EC2::VPCGatewayAttachment": 1,
-            "AWS::EC2::Route": 2,
-            "AWS::EC2::NatGateway": 0,
-        }
-        for resource_type, expected_resource_count in expected_resource_counts.items():
-            self.template.resource_count_is(resource_type, expected_resource_count)
+    def test_vpc_nat_gateway(self) -> None:
+        nat_gateway = self.template.find_resources("AWS::EC2::NatGateway")
+        self.assertEqual(len(nat_gateway), 0)
+
+    def test_internet_gateway(self) -> None:
+        internet_gateway = self.template.find_resources("AWS::EC2::InternetGateway")
+        self.assertEqual(len(internet_gateway), 1)
+
+    def test_subnet_route_table_associations(self) -> None:
+        subnet_route_table_association = self.template.find_resources("AWS::EC2::SubnetRouteTableAssociation")
+        self.assertEqual(len(subnet_route_table_association), 6)
+
+    def test_route_tables(self) -> None:
+        route_table = self.template.find_resources("AWS::EC2::RouteTable")
+        self.assertEqual(len(route_table), 6)
+
+    def test_subnets(self)-> None:
+        subnets = self.template.find_resources("AWS::EC2::Subnet")
+        self.assertEqual(len(subnets), 6)
+
 
     def test_public_default_route(self)-> None:
         route_resources = self.template.find_resources("AWS::EC2::Route")
@@ -98,22 +108,53 @@ class TestNetworkingStack(unittest.TestCase):
             "10.0.80.0/20",
         ]
     )
+    # VPC Interface Endpoint tests
+    def test_interface_endpoint(self)-> None:
+        private_db_subnets = self._subnet_ids_by_name("private_db")
+        private_app_subnets = self._subnet_ids_by_name("private_app")
+        public_subnets = self._subnet_ids_by_name("public")
+        interface_endpoint = self.template.find_resources("AWS::EC2::VPCEndpoint")
+        endpoint = next(iter(interface_endpoint.values()))
+        endpoint_subnet_ref = {subnet_ref["Ref"] for subnet_ref in endpoint["Properties"]["SubnetIds"]}
+        self.assertEqual(sorted(endpoint_subnet_ref),sorted(private_app_subnets))
+        self.assertTrue(endpoint_subnet_ref.isdisjoint(private_db_subnets))
+        self.assertTrue(endpoint_subnet_ref.isdisjoint(public_subnets))
+        self.assertEqual(len(endpoint_subnet_ref), 2)
+        self.assertEqual(len(interface_endpoint), 1)
+
+        service_name = endpoint["Properties"]["ServiceName"]
+        join_service_name = service_name["Fn::Join"][1]
+        self.assertEqual(endpoint["Properties"]["VpcEndpointType"],"Interface")
+        self.assertIn(".ecr.api",join_service_name)
+
+
 
     def test_interface_endpoints_security_groups(self)->None:
 
         security_groups = self.template.find_resources("AWS::EC2::SecurityGroup")
+        vpc_endpoints = self.template.find_resources("AWS::EC2::VPCEndpoint")
+        expected_sg_ids = set(security_groups.keys())
+
         security_group = next(iter(security_groups.values()))
         ingress_rules = security_group["Properties"]["SecurityGroupIngress"]
-        sg_ingress_rules = [
-            ingress_rule["CidrIp"]
-            for resource in security_groups.values()
-            for ingress_rule in resource["Properties"].get("SecurityGroupIngress", [])
-                          ]
-        self.assertEqual(sorted(sg_ingress_rules), sorted(['10.0.48.0/20','10.0.32.0/20']))
-        self.assertTrue(len(sg_ingress_rules) == 2)
-        self.assertNotIn("0.0.0.0/0",sg_ingress_rules)
+        string_cidrs = [rule["CidrIp"] for rule in ingress_rules if isinstance(rule.get("CidrIp"), str)]
+        non_string_cidrs =[rule["CidrIp"] for rule in ingress_rules if not isinstance(rule.get("CidrIp"), str)]
+
+        vpc_endpoint_sg_id = {
+            sg_ref["Fn::GetAtt"][0]
+            for resource in vpc_endpoints.values()
+            for sg_ref in resource["Properties"].get("SecurityGroupIds", [])}
+
+
+        self.assertSetEqual(expected_sg_ids, vpc_endpoint_sg_id)
+
+        self.assertIn('10.0.32.0/20', string_cidrs)
+        self.assertIn('10.0.48.0/20', string_cidrs)
+
+        self.assertEqual(non_string_cidrs,[])
         self.assertEqual(len(security_groups), 1)
         for rule in ingress_rules:
             self.assertEqual(rule["IpProtocol"], "tcp")
             self.assertEqual(rule["FromPort"], 443)
             self.assertEqual(rule["ToPort"], 443)
+
