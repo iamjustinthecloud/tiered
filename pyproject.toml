@@ -17,7 +17,18 @@ cdk-nag = "^2.37.55"
 
 [tool.poetry.group.dev.dependencies]
 coverage = "^7.13.5"
+black = "^26.3.1"
+isort = "^8.0.1"
+flake8 = "^7.3.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
