@@ -77,6 +77,15 @@ class NetworkingStack(Stack):
             subnets=ec2.SubnetSelection(subnet_group_name="private_app"),
             security_groups=[self.endpoint_sg],
         )
+        self.vpc.add_interface_endpoint(
+            "CloudWatchLogsInterfaceEndpoint",
+            open=False,
+            service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
+            subnets=ec2.SubnetSelection(
+                subnet_group_name="private_app",
+            ),
+            security_groups=[self.endpoint_sg],
+        )
         NagSuppressions.add_resource_suppressions(
             construct=self.vpc,
             suppressions=[
