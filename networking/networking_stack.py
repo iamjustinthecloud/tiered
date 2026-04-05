@@ -1,9 +1,14 @@
 import aws_cdk.aws_ec2 as ec2
-import aws_cdk.aws_ecr as ecr
+from aws_cdk import CfnTag, Stack
 from cdk_nag import NagSuppressions
-from aws_cdk import Stack, CfnTag
 from constructs import Construct
-from networking.security_groups import endpoint_security_group
+
+from networking.security_groups import (
+    app_service_security_group,
+    endpoint_security_group,
+    web_alb_security_group,
+    db_service_security_group,
+)
 
 
 class NetworkingStack(Stack):
@@ -36,7 +41,16 @@ class NetworkingStack(Stack):
                 ),
             ],
         )
-        self.endpoint_sg = endpoint_security_group(self, self.vpc)
+        self.web_alb_sg = web_alb_security_group(self, self.vpc, alb_port=80)
+        self.app_service_sg = app_service_security_group(
+            self, self.vpc, app_port=80, web_alb_sg=self.web_alb_sg
+        )
+        self.endpoint_sg = endpoint_security_group(
+            self, self.vpc, app_sg=self.app_service_sg
+        )
+        self.db_service_sg = db_service_security_group(
+            self, self.vpc, db_port=3306, app_sg=self.app_service_sg
+        )
         self.cfn_internet_gateway = ec2.CfnInternetGateway(
             self,
             "InternetGateway",
@@ -86,14 +100,35 @@ class NetworkingStack(Stack):
             ),
             security_groups=[self.endpoint_sg],
         )
+        self.vpc.add_gateway_endpoint(
+            "S3GatewayEndpoint",
+            service=ec2.GatewayVpcEndpointAwsService.S3,
+            subnets=[
+                ec2.SubnetSelection(
+                    subnet_group_name="private_app",
+                )
+            ],
+        )
         NagSuppressions.add_resource_suppressions(
             construct=self.vpc,
             suppressions=[
                 {
                     "id": "AwsSolutions-VPC7",
-                    "reason": "Flow Logs are intentionally deferred in this personal POC during "
-                    "M3 to avoid added logging cost before the runtime validation gate.",
+                    "reason": "Flow Logs are intentionally deferred in this "
+                    "personal POC during "
+                    "M3 to avoid added logging cost before the runtime "
+                    "validation gate.",
                 }
             ],
             apply_to_children=True,
+        )
+        NagSuppressions.add_resource_suppressions(
+            self.web_alb_sg,
+            [
+                {
+                    "id": "AwsSolutions-EC23",
+                    "reason": "This security group is intentionally attached to a "
+                    "public ALB and allows only HTTP ingress on port 80.",
+                }
+            ],
         )

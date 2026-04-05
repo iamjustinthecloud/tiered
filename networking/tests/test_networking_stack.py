@@ -1,9 +1,12 @@
 import unittest
-from typing import Mapping, Any
+from typing import Any, Mapping
 
 from aws_cdk import App
 from aws_cdk.assertions import Template
+
 from networking.networking_stack import NetworkingStack
+
+# TODO: Create tests for the CloudWatchLogsInterfaceEndpoint and S3GatewayEndpoint
 
 
 class TestNetworkingStack(unittest.TestCase):
